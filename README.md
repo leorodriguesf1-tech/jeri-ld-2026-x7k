@@ -1,1 +1,3 @@
-# jeri-ld-2026-x7k
+# Jeri
+
+App pessoal de viagem.

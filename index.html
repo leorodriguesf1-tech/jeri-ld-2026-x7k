@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Jeri">
+<meta name="theme-color" content="#F2F2F7">
+<meta name="robots" content="noindex, nofollow">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.json">
+<title>Jeri</title>
+<style>
+/* Lock screen: Wallet palette, one centered card */
+:root{--bg:#F2F2F7;--card:#fff;--txt:#1C1C1E;--suave:#6C6C70;--teal:#0A7C6E;--erro:#C9341C}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;background:var(--bg);color:var(--txt);display:flex;align-items:center;justify-content:center;padding:calc(env(safe-area-inset-top) + 24px) 20px calc(env(safe-area-inset-bottom) + 24px)}
+.card{width:100%;max-width:380px;background:var(--card);border-radius:22px;padding:28px 22px;display:flex;flex-direction:column;gap:16px;text-align:center}
+.card img{width:72px;height:72px;border-radius:18px;margin:0 auto}
+h1{font-size:26px;font-weight:800;letter-spacing:-.02em}
+p{font-size:15px;color:var(--suave)}
+label{font-size:13px;font-weight:600;color:var(--suave);text-align:left}
+input{font:inherit;font-size:18px;padding:14px;border-radius:14px;border:1.5px solid #D1D1D6;background:#fff;width:100%}
+input:focus{outline:none;border-color:var(--teal)}
+button{font:inherit;font-size:17px;font-weight:700;border:0;border-radius:14px;min-height:52px;background:var(--teal);color:#fff;cursor:pointer}
+button:disabled{opacity:.6}
+.erro{color:var(--erro);font-size:14px;min-height:18px}
+.carregando{display:none;color:var(--suave)}
+body.auto .card{display:none}
+body.auto .carregando{display:block}
+</style>
+</head>
+<body>
+<p class="carregando">Abrindo…</p>
+<form class="card" id="f" autocomplete="off">
+  <img src="icon-180.png" alt="">
+  <h1>Jericoacoara</h1>
+  <p>Digite a senha do app. Ela fica salva neste iPhone.</p>
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <label for="senha">Senha</label>
+    <input id="senha" type="password" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+  </div>
+  <button id="ok" type="submit">Entrar</button>
+  <p class="erro" id="erro" role="alert"></p>
+</form>
+<script>
+if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").catch(function(){}); }
+
+var CHAVE = "jeri-chave-v1";
+var ITER = 1000000;
+
+function b64(u){ var s=""; for (var i=0;i<u.length;i++) s+=String.fromCharCode(u[i]); return btoa(s); }
+function unb64(s){ var b=atob(s), u=new Uint8Array(b.length); for (var i=0;i<b.length;i++) u[i]=b.charCodeAt(i); return u; }
+
+async function lerPacote(){
+  var r = await fetch("data.enc", {cache:"no-cache"});
+  if (!r.ok) throw new Error("rede");
+  var buf = new Uint8Array(await r.arrayBuffer());
+  return { salt: buf.slice(0,16), iv: buf.slice(16,28), dados: buf.slice(28) };
+}
+async function derivar(senha, salt){
+  var base = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveBits"]);
+  var bits = await crypto.subtle.deriveBits({name:"PBKDF2", salt:salt, iterations:ITER, hash:"SHA-256"}, base, 256);
+  return new Uint8Array(bits);
+}
+async function abrir(chaveBruta, pacote){
+  var k = await crypto.subtle.importKey("raw", chaveBruta, "AES-GCM", false, ["decrypt"]);
+  var claro = await crypto.subtle.decrypt({name:"AES-GCM", iv:pacote.iv}, k, pacote.dados);
+  return new TextDecoder().decode(claro);
+}
+function mostrar(html){ document.open(); document.write(html); document.close(); }
+
+(async function(){
+  var salva = null;
+  try { salva = localStorage.getItem(CHAVE); } catch(e) {}
+  if (!salva) return;
+  document.body.classList.add("auto");
+  try { mostrar(await abrir(unb64(salva), await lerPacote())); }
+  catch(e) {
+    document.body.classList.remove("auto");
+    if (e && e.message === "rede") { document.getElementById("erro").textContent = "Não consegui carregar os dados. Abra uma vez com internet."; }
+    else { try { localStorage.removeItem(CHAVE); } catch(_) {} }
+  }
+})();
+
+document.getElementById("f").addEventListener("submit", async function(ev){
+  ev.preventDefault();
+  var bt = document.getElementById("ok"), er = document.getElementById("erro");
+  bt.disabled = true; bt.textContent = "Abrindo…"; er.textContent = "";
+  try {
+    var pacote = await lerPacote();
+    var chave = await derivar(document.getElementById("senha").value, pacote.salt);
+    var html = await abrir(chave, pacote);
+    try { localStorage.setItem(CHAVE, b64(chave)); } catch(e) {}
+    mostrar(html);
+  } catch(e) {
+    er.textContent = (e && e.message === "rede") ? "Sem internet. Na primeira vez o app precisa estar online." : "Senha incorreta. Tente de novo.";
+    bt.disabled = false; bt.textContent = "Entrar";
+  }
+});
+</script>
+</body>
+</html>
