@@ -2,7 +2,7 @@
 // Network first (with a short timeout) so updates arrive whenever there is signal;
 // falls back to the cached copy when offline.
 const CACHE = "jeri-app";
-const ARQUIVOS = ["./", "./index.html", "./data.enc", "./manifest.json", "./icon-180.png", "./icon-512.png"];
+const ARQUIVOS = ["./", "./index.html", "./data.enc", "./manifest.json", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 const ESPERA_MS = 4000;
 
 self.addEventListener("install", (e) => {
